@@ -1,0 +1,8 @@
+[package]
+name = "human-units"
+version = "0.1.0"
+edition = "2021"
+license = "MIT"
+description = "Parse and format byte sizes and durations as human-readable strings"
+
+[dependencies]
