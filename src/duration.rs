@@ -1,11 +1,18 @@
 //! Duration formatting and parsing for compound human strings like
-//! `"1h30m"` or `"250ms"`.
+//! `"1w2d"` or `"250ms"`.
 
 use std::fmt;
 use std::time::Duration;
 
+const SECS_PER_MINUTE: u64 = 60;
+const SECS_PER_HOUR: u64 = 60 * SECS_PER_MINUTE;
+const SECS_PER_DAY: u64 = 24 * SECS_PER_HOUR;
+const SECS_PER_WEEK: u64 = 7 * SECS_PER_DAY;
+
 /// Renders a `Duration` as a compact human-readable string, e.g.
-/// `"1h 5m 30s"` or `"250ms"` for anything under a second.
+/// `"1w 2d 1h"` or `"250ms"` for anything under a second. Weeks and days
+/// are only shown when the duration is long enough to need them, so short
+/// durations still format the same as before.
 ///
 /// ```
 /// use std::time::Duration;
@@ -13,6 +20,7 @@ use std::time::Duration;
 /// assert_eq!(format_duration(Duration::from_secs(0)), "0s");
 /// assert_eq!(format_duration(Duration::from_millis(250)), "250ms");
 /// assert_eq!(format_duration(Duration::from_secs(3661)), "1h 1m 1s");
+/// assert_eq!(format_duration(Duration::from_secs(9 * 86400)), "1w 2d");
 /// ```
 pub fn format_duration(duration: Duration) -> String {
     if duration.is_zero() {
@@ -25,11 +33,19 @@ pub fn format_duration(duration: Duration) -> String {
     }
 
     let total_secs = duration.as_secs();
-    let hours = total_secs / 3600;
-    let minutes = (total_secs % 3600) / 60;
-    let seconds = total_secs % 60;
+    let weeks = total_secs / SECS_PER_WEEK;
+    let days = (total_secs % SECS_PER_WEEK) / SECS_PER_DAY;
+    let hours = (total_secs % SECS_PER_DAY) / SECS_PER_HOUR;
+    let minutes = (total_secs % SECS_PER_HOUR) / SECS_PER_MINUTE;
+    let seconds = total_secs % SECS_PER_MINUTE;
 
     let mut parts = Vec::new();
+    if weeks > 0 {
+        parts.push(format!("{weeks}w"));
+    }
+    if days > 0 {
+        parts.push(format!("{days}d"));
+    }
     if hours > 0 {
         parts.push(format!("{hours}h"));
     }
@@ -62,14 +78,16 @@ impl fmt::Display for ParseDurationError {
 impl std::error::Error for ParseDurationError {}
 
 /// Parses a compound duration string such as `"1h30m"`, `"45s"`, or
-/// `"500ms"` into a `Duration`. Recognized units are `ms`, `s`, `m`, and
-/// `h`; multiple number-unit pairs can be concatenated with no separator.
+/// `"1w2d"` into a `Duration`. Recognized units are `ms`, `s`, `m`, `h`,
+/// `d`, and `w`; multiple number-unit pairs can be concatenated with no
+/// separator.
 ///
 /// ```
 /// use std::time::Duration;
 /// use human_units::parse_duration;
 /// assert_eq!(parse_duration("1h30m").unwrap(), Duration::from_secs(5400));
 /// assert_eq!(parse_duration("500ms").unwrap(), Duration::from_millis(500));
+/// assert_eq!(parse_duration("1w2d").unwrap(), Duration::from_secs(9 * 86400));
 /// ```
 pub fn parse_duration(input: &str) -> Result<Duration, ParseDurationError> {
     let trimmed = input.trim();
@@ -113,6 +131,8 @@ pub fn parse_duration(input: &str) -> Result<Duration, ParseDurationError> {
             "s" => 1_000.0,
             "m" => 60_000.0,
             "h" => 3_600_000.0,
+            "d" => (SECS_PER_DAY * 1_000) as f64,
+            "w" => (SECS_PER_WEEK * 1_000) as f64,
             other => return Err(ParseDurationError::UnknownUnit(other.to_string())),
         };
 
@@ -153,6 +173,19 @@ mod tests {
     }
 
     #[test]
+    fn formats_days_and_weeks() {
+        assert_eq!(format_duration(Duration::from_secs(SECS_PER_DAY)), "1d");
+        assert_eq!(
+            format_duration(Duration::from_secs(9 * SECS_PER_DAY)),
+            "1w 2d"
+        );
+        assert_eq!(
+            format_duration(Duration::from_secs(9 * SECS_PER_DAY + 3661)),
+            "1w 2d 1h 1m 1s"
+        );
+    }
+
+    #[test]
     fn parses_single_unit() {
         assert_eq!(parse_duration("45s").unwrap(), Duration::from_secs(45));
         assert_eq!(parse_duration("500ms").unwrap(), Duration::from_millis(500));
@@ -168,6 +201,19 @@ mod tests {
     }
 
     #[test]
+    fn parses_days_and_weeks() {
+        assert_eq!(parse_duration("1d").unwrap(), Duration::from_secs(SECS_PER_DAY));
+        assert_eq!(
+            parse_duration("1w2d").unwrap(),
+            Duration::from_secs(SECS_PER_WEEK + 2 * SECS_PER_DAY)
+        );
+        assert_eq!(
+            parse_duration("2w3d4h").unwrap(),
+            Duration::from_secs(2 * SECS_PER_WEEK + 3 * SECS_PER_DAY + 4 * SECS_PER_HOUR)
+        );
+    }
+
+    #[test]
     fn rejects_empty_input() {
         assert_eq!(parse_duration(""), Err(ParseDurationError::Empty));
     }
@@ -175,8 +221,8 @@ mod tests {
     #[test]
     fn rejects_unknown_unit() {
         assert_eq!(
-            parse_duration("5d"),
-            Err(ParseDurationError::UnknownUnit("d".to_string()))
+            parse_duration("5y"),
+            Err(ParseDurationError::UnknownUnit("y".to_string()))
         );
     }
 }

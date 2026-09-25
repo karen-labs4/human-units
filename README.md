@@ -39,8 +39,8 @@ to unit test and safe to call from anywhere.
 ## Status
 
 Early. Byte parsing supports `B`, `KB`/`KiB`, `MB`/`MiB`, `GB`/`GiB`, and
-`TB`/`TiB`. Duration parsing supports `ms`, `s`, `m`, and `h`. See the
-issues for what is planned next.
+`TB`/`TiB`. Duration parsing supports `ms`, `s`, `m`, `h`, `d`, and `w`.
+See the issues for what is planned next.
 
 ## License
 
